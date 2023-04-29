@@ -1,4 +1,4 @@
-package com.library.app.responsemodels;
+package com.library.app.requestmodels;
 
 import lombok.Data;
 

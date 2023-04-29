@@ -1,6 +1,7 @@
 package com.library.app.controller;
 
 import com.library.app.entity.Message;
+import com.library.app.requestmodels.AdminQuestionRequest;
 import com.library.app.service.MessagesService;
 import com.library.app.utils.ExtractJWT;
 import org.springframework.web.bind.annotation.*;
@@ -21,5 +22,15 @@ public class MessagesController {
                             @RequestBody Message messageRequest) {
         String userEmail = ExtractJWT.payloadJWTExtraction(token, "\"sub\"");
         messagesService.postMessage(messageRequest, userEmail);
+    }
+    @PutMapping("/secure/admin/message")
+    public void putMessage(@RequestHeader(value="Authorization") String token,
+                           @RequestBody AdminQuestionRequest adminQuestionRequest) throws Exception {
+        String userEmail = ExtractJWT.payloadJWTExtraction(token, "\"sub\"");
+        String admin = ExtractJWT.payloadJWTExtraction(token, "\"userType\"");
+        if (admin == null || !admin.equals("admin")) {
+            throw new Exception("Administration page only.");
+        }
+        messagesService.putMessage(adminQuestionRequest, userEmail);
     }
 }
