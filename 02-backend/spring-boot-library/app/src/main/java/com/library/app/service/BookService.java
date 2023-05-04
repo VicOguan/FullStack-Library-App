@@ -5,9 +5,11 @@ package com.library.app.service;
 import com.library.app.dao.BookRepository;
 import com.library.app.dao.CheckoutRepository;
 import com.library.app.dao.HistoryRepository;
+import com.library.app.dao.PaymentRepository;
 import com.library.app.entity.Book;
 import com.library.app.entity.Checkout;
 import com.library.app.entity.History;
+import com.library.app.entity.Payment;
 import com.library.app.responsemodels.ShelfCurrentLoanResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,12 +30,14 @@ public class BookService {
     private BookRepository bookRepository;
     private CheckoutRepository checkoutRepository;
 
+    private PaymentRepository paymentRepository;
+
     public BookService(BookRepository bookRepository, CheckoutRepository checkoutRepository,
-                       HistoryRepository historyRepository) {
+                       HistoryRepository historyRepository, PaymentRepository paymentRepository) {
         this.bookRepository = bookRepository;
         this.checkoutRepository = checkoutRepository;
         this.historyRepository = historyRepository;
-
+        this.paymentRepository = paymentRepository;
     }
 
     public Book checkoutBook(String userEmail, Long bookId) throws Exception {
@@ -42,8 +46,43 @@ public class BookService {
         Checkout validateCheckout = checkoutRepository.findByUserEmailAndBookId(userEmail, bookId);
 
         if (!book.isPresent() || validateCheckout != null || book.get().getCopiesAvailable() <= 0) {
-            throw new Exception("Book doesnt exist or already checkout");
+            throw new Exception("Book doesn't exist or already checkout");
         }
+
+
+        List<Checkout> currentBookCheckedOut= checkoutRepository.findBooksByUserEmail(userEmail);
+
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+
+        boolean bookNeedsReturned = false;
+
+        for (Checkout checkout: currentBookCheckedOut){
+            Date d1 = sdf.parse(checkout.getReturnDate());
+            Date d2 = sdf.parse(LocalDate.now().toString());
+
+            TimeUnit time = TimeUnit.DAYS;
+
+            double differentInTime = time.convert(d1.getTime() - d2.getTime(), TimeUnit.MILLISECONDS);
+
+            if (differentInTime < 0){
+                bookNeedsReturned = true;
+                break;
+            }
+        }
+
+        Payment userPayment = paymentRepository.findByUserEmail(userEmail);
+
+        if ((userPayment != null && userPayment.getAmount() > 0) || (userPayment != null && bookNeedsReturned)){
+            throw new Exception("Outstanding Fees");
+        }
+
+        if (userPayment == null){
+            Payment payment = new Payment();
+            payment.setAmount(00.00);
+            payment.setUserEmail(userEmail);
+            paymentRepository.save(payment);
+        }
+
         book.get().setCopiesAvailable(book.get().getCopiesAvailable() - 1);
         bookRepository.save(book.get());
 
@@ -114,10 +153,26 @@ public class BookService {
         if (!book.isPresent() || validateCheckout == null) {
             throw new Exception("Book does not exist or not checked out by user");
         }
-
         book.get().setCopiesAvailable(book.get().getCopiesAvailable() + 1);
 
         bookRepository.save(book.get());
+
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+
+            Date d1 = sdf.parse(validateCheckout.getReturnDate());
+            Date d2 = sdf.parse(LocalDate.now().toString());
+
+            TimeUnit time = TimeUnit.DAYS;
+
+            double differentInTime = time.convert(d1.getTime() - d2.getTime(), TimeUnit.MILLISECONDS);
+
+            if (differentInTime < 0){
+                Payment payment = paymentRepository.findByUserEmail(userEmail);
+
+                payment.setAmount(payment.getAmount() + (differentInTime * -1));
+                paymentRepository.save(payment);
+            }
+
         checkoutRepository.deleteById(validateCheckout.getId());
 
             History history = new History(
